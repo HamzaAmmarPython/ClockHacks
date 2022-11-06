@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Google Calendar API Quickstart</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <button id="authorize_button" onclick="handleAuthClick()">Login</button>
+    <button id="signout_button" onclick="handleSignoutClick()">Sign Out</button>
+    <div style = "display: inline-block;" id = "container" class="container">
+        <h3>Select a Task</h3>
+        <select  id = "Tasks">
+            <option id = "Essay">Standard Essay(3 Paragraph)</option>
+            <option id = "Test">Studying For a Test</option>
+            <option id = "Book">Book Analysis</option>
+            <option id = "Hackathon">Hackathon Project</option>
+        </select>
+        <br>
+        <button class = "btn btn-secondary" id = "submit" onclick="displayTasks()">Submit</button>
+    </div>
+    <div id = "Uls">
+        <ul style = "list-style-type:none; display: inline-block;" id = "TaskComps"></ul>
+        <ul style = "list-style-type:none; display: inline-block;" id = "TaskTime"></ul>
+        <button class = "btn btn-secondary" id ="Calendar" onclick = "">Upload To Google Calendar</button>
+    </div>
+    <div id = "Calendar">
+      <h3>When Will You Be Working On This Task?</h3></h1>
+      <input id = "startDate" type = "date" value = "Start Date">
+      <label for = "Start Time">Start Time</label>
+      <input id = "endDate" type = "date" value = "End Date">
+      <label for = "End Time">End Time</label>
+      <h3>Between What time are you regularly available</h3>
+      <input type = "time" id = "Start_Time">
+      <input type = "time" id = "End_Time"> 
+      <br>
+      <button class = "btn btn-primary" onclick = "testWrite()">Submit</button>
+    </div>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
+
+
+
+
+    <script type="text/javascript">
+      /* exported gapiLoaded */
+      /* exported gisLoaded */
+      /* exported handleAuthClick */
+      /* exported handleSignoutClick */
+      document.getElementById('Calendar').style.visibility = 'hidden';
+      const Essay = [["Select Topic"], ["Select 3-4 Arguments"], ["Research Point #1"], ["Research Point #2"], ["Research Point #3"], ["Write Introduction & Conclusion"], ["Proofread & Edit #1 & #2"]];
+      let EssayTime = [30 , 45 , 90 , 90 , 90 , 30 , 120];
+      const SmallEssay = [["Select Topic & Arguments"],["Write Introduction"], ["Research Points"], ["Proofread & Edit"]];
+      let SmallEssayTime = [60 , 30 , 90 , 60];
+      // TODO(developer): Set to client ID and API key from the Developer Console
+      const CLIENT_ID = '57213945627-gqdm474gc0o60rsqcg29ng394tlvn50v.apps.googleusercontent.com';
+      const API_KEY = 'AIzaSyBVuV6BeZ83ecxgU_iglFXInWXRvmWrJ8A';
+
+      // Discovery doc URL for APIs used by the quickstart
+      const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+
+      // Authorization scopes required by the API; multiple scopes can be
+      // included, separated by spaces.
+      const SCOPES = 'https://www.googleapis.com/auth/calendar';
+
+      let tokenClient;
+      let gapiInited = false;
+      let gisInited = false;
+
+      document.getElementById('authorize_button').style.visibility = 'hidden';
+      document.getElementById('signout_button').style.visibility = 'hidden';
+
+      /**
+       * Callback after api.js is loaded.
+       */
+      function gapiLoaded() {
+        gapi.load('client', initializeGapiClient);
+      }
+
+      gapiLoaded();
+
+      /**
+       * Callback after the API client is loaded. Loads the
+       * discovery doc to initialize the API.
+       */
+      async function initializeGapiClient() {
+        await gapi.client.init({
+          apiKey: API_KEY,
+          discoveryDocs: [DISCOVERY_DOC],
+        });
+        gapiInited = true;
+        maybeEnableButtons();
+      }
+
+      /**
+       * Callback after Google Identity Services are loaded.
+       */
+      function gisLoaded() {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: '', // defined later
+        });
+        gisInited = true;
+        maybeEnableButtons();
+      }
+
+      gisLoaded();
+
+      /**
+       * Enables user interaction after all libraries are loaded.
+       */
+      function maybeEnableButtons() {
+        if (gapiInited && gisInited) {
+          document.getElementById('authorize_button').style.visibility = 'visible';
+        }
+      }
+
+      /**
+       *  Sign in the user upon button click.
+       */
+       function sleep(milliseconds) {
+          const date = Date.now();
+          let currentDate = null;
+          do {
+            currentDate = Date.now();
+          } while (currentDate - date < milliseconds);
+        }
+      function handleAuthClick() {
+        tokenClient.callback = async (resp) => {
+          if (resp.error !== undefined) {
+            throw (resp);
+          }
+          document.getElementById('signout_button').style.visibility = 'visible';
+          document.getElementById('authorize_button').innerText = 'Refresh';
+          await listUpcomingEvents();
+        };
+
+        if (gapi.client.getToken() === null) {
+          // Prompt the user to select a Google Account and ask for consent to share their data
+          // when establishing a new session.
+          tokenClient.requestAccessToken({prompt: 'consent'});
+        } else {
+          // Skip display of account chooser and consent dialog for an existing session.
+          tokenClient.requestAccessToken({prompt: ''});
+        }
+      }
+
+      /**
+       *  Sign out the user upon button click.
+       */
+      function handleSignoutClick() {
+        const token = gapi.client.getToken();
+        if (token !== null) {
+          google.accounts.oauth2.revoke(token.access_token);
+          gapi.client.setToken('');
+          document.getElementById('content').innerText = '';
+          document.getElementById('authorize_button').innerText = 'Authorize';
+          document.getElementById('signout_button').style.visibility = 'hidden';
+        }
+      }
+
+      /**
+       * Print the summary and start datetime/date of the next ten events in
+       * the authorized user's calendar. If no events are found an
+       * appropriate message is printed.
+       */
+       Date.prototype.addMinutes = function(minutes) {
+          this.setMinutes(this.getMinutes() + minutes);
+          return this;
+        };
+      async function listUpcomingEvents() {
+        let response;
+        try {
+          const request = {
+            'calendarId': 'primary',
+            'timeMin': (new Date()).toISOString(),
+            'showDeleted': false,
+            'singleEvents': true,
+            'maxResults': 10,
+            'orderBy': 'startTime',
+          };
+          response = await gapi.client.calendar.events.list(request);
+        } catch (err) {
+          document.getElementById('content').innerText = err.message;
+          return;
+        }
+
+        const events = response.result.items;
+        if (!events || events.length == 0) {
+          document.getElementById('content').innerText = 'No events found.';
+          return;
+        }
+        // Flatten to string to display
+        const output = events.reduce(
+            (str, event) => `${str}${event.summary} (${event.start.dateTime || event.start.date})\n`,
+            'Events:\n');
+        document.getElementById('content').innerText = output;
+      }
+      function upload(){
+        document.getElementsById('Calendar').style.visibility = 'visible';
+        // window.open("Calendar.HTML", 'popUpWindow','height=500,width=400,left=100,top=100,resizable=yes,scrollbars=yes,toolbar=yes,menubar=no,location=no,directories=no, status=yes');
+      }
+      // Refer to the JavaScript quickstart on how to setup the environment:
+// https://developers.google.com/calendar/quickstart/js
+// Change the scope to 'https://www.googleapis.com/auth/calendar' and delete any
+// stored credentials.
+      function displayTasks(){
+        selectorvalue = document.getElementById('Tasks').value;
+        TaskComps = document.getElementById('TaskComps');
+        TaskTime = document.getElementById('TaskTime');
+        div = document.getElementById('Uls');
+        TaskComps.innerHTML = ' '
+        TaskTime.innerHTML = ' '
+
+        if (selectorvalue == "Standard Essay(3 Paragraph)"){
+            task = "Essay";
+        }
+        if (selectorvalue == "Studying For a Test"){
+            task = "Test";
+        }
+        title = document.createElement('h5');
+        title.innerHTML = "Task Components";
+        title.style.fontWeight = 'bold';
+        TaskComps.appendChild(title);
+        for (i = 0; i < SmallEssay.length; i++){
+            element = document.createElement("li");
+            element.innerHTML = SmallEssay[i];
+            TaskComps.appendChild(element);
+        }
+        title = document.createElement('h5');
+        title.innerHTML = "Time";
+        title.style.fontWeight = 'bold';
+        TaskTime.appendChild(title);
+        for (i = 0; i < SmallEssayTime.length; i++){
+            element = document.createElement("li");
+            element.innerHTML = SmallEssayTime[i];
+            TaskTime.appendChild(element);
+        }
+        document.getElementById('Calendar').style.visibility = 'visible';
+        }
+
+
+      async function testWrite(){
+        startDate = document.getElementById('startDate').value;
+        console.log(startDate);
+
+        endDate = document.getElementById('endDate').value;
+        console.log(endDate);
+
+        startTime = document.getElementById('Start_Time').value;
+        console.log(startTime);
+
+        endTime = document.getElementById('End_Time').value;
+        console.log(endTime);
+
+        // start = '2022-11-01T00:00:00+09:00';
+        // end = '2022-11-01T01:00:00+09:00';
+
+
+        // For loop over items
+
+        start = new Date(startDate + "T" + startTime + ":00-05:00");
+        for (i = 0; i < SmallEssay.length; i++){
+          
+          end = new Date(start)
+          end.setMinutes(end.getMinutes() + SmallEssayTime[i]);
+          //console.log(end+ " --- "+start);
+          
+          console.log(start, end);
+          event = {
+            'summary': SmallEssay[i],
+            'location': 'Home',
+            'description': 'A chance to hear more about Google\'s developer products.',
+            'start': {
+              'dateTime': start,
+              'timeZone': 'America/New_York',
+            },
+            'end': {
+              'dateTime': end,
+              'timeZone': 'America/New_York',
+            }
+            
+          };  
+
+
+          //setTimeout(sendToGoogle(), 100);
+
+          
+          function sendToGoogle(){
+            const request = gapi.client.calendar.events.insert({
+              'calendarId': 'primary',
+              'resource': event
+            });  
+            request.execute(function(event) {
+              console.log(event)
+              // appendPre('Event created: ' + event.htmlLink);
+            });
+          }
+
+
+
+
+
+          sendToGoogle();
+
+          if (i % 3 == 0){
+            sleep(50);
+          }
+
+
+          
+          start = new Date(end);
+          start.setMinutes(start.getMinutes() + 15);
+
+        }
+      };
+
+    </script>
+  </body>
+</html>
